@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ZATCA QR Generator</title>
+<title> QR Generator</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <style>
   * { box-sizing: border-box; }
@@ -37,7 +37,7 @@ h2 { display: none; }
 <body>
 <div class="wrap">
   <span class="lang-toggle" id="langToggle">English</span>
-  <h2 id="title">مولّد رمز الاستجابة السريعة (ZATCA)</h2>
+  <h2 id="title">مولّد رمز الاستجابة السريعة ()</h2>
   <button id="startBtn">إنشاء رمز QR</button>
   <button id="reloadBtn" class="secondary" style="display:none">تحديث الصفحة</button>
   <div id="qrPreview"></div>
@@ -52,7 +52,7 @@ h2 { display: none; }
   var lang = "ar";
   var strings = {
     ar: {
-      title: "مولّد رمز الاستجابة السريعة (ZATCA)",
+      title: "مولّد رمز الاستجابة السريعة ()",
       start: "إنشاء رمز QR",
       reload: "تحديث الصفحة",
       toggle: "English",
@@ -72,7 +72,7 @@ h2 { display: none; }
       generalError: "حدث خطأ: "
     },
     en: {
-      title: "ZATCA QR Code Generator",
+      title: " QR Code Generator",
       start: "Generate QR Code",
       reload: "Reload Page",
       toggle: "العربية",
@@ -158,13 +158,13 @@ h2 { display: none; }
     });
   }
 
-  // ---------- ZATCA TLV + QR ----------
+  // ----------  TLV + QR ----------
   function encodeTLV(tag, value) {
     var utf8 = new TextEncoder().encode(String(value));
     return Uint8Array.from([tag, utf8.length].concat(Array.from(utf8)));
   }
 
-  function generateZatcaQrSvg(data) {
+  function generateQrSvg(data) {
     var tlv = [
       encodeTLV(1, data.sellerName),
       encodeTLV(2, data.vatNumber),
@@ -199,7 +199,7 @@ h2 { display: none; }
   startBtn.addEventListener("click", function () {
     startBtn.disabled = true;
     run().catch(function (err) {
-      console.log("ZATCA extension error:", err);
+      console.log(" extension error:", err);
       fail(err && err.message ? err.message : String(err));
     });
   });
@@ -266,7 +266,7 @@ h2 { display: none; }
 
     // Step 5: generate QR
     setStatus(t("generating"));
-    var qrSvg = generateZatcaQrSvg({
+    var qrSvg = generateQrSvg({
       sellerName: sellerName,
       vatNumber: vatNumber,
       timestamp: timestamp,
