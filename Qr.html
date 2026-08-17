@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZATCA QR Generator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Tahoma, Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background: #fff;
+    color: #222;
+  }
+  html[dir="ltr"] body { direction: ltr; }
+  .wrap { max-width: 480px; margin: 0 auto; text-align: center; }
+  .lang-toggle {
+    position: absolute; top: 10px; inset-inline-end: 10px;
+    font-size: 12px; cursor: pointer; color: #666; text-decoration: underline;
+  }
+  h2 { font-size: 16px; margin: 0 0 16px; }
+  button {
+    background: #2e7d32; color: #fff; border: none; border-radius: 6px;
+    padding: 10px 22px; font-size: 14px; cursor: pointer; margin: 6px;
+  }
+  button:disabled { background: #aaa; cursor: not-allowed; }
+  button.secondary { background: #1565c0; }
+  #status { margin-top: 14px; font-size: 13px; color: #555; min-height: 18px; white-space: pre-wrap; }
+  #status.error { color: #c62828; font-weight: bold; }
+  #status.success { color: #2e7d32; font-weight: bold; }
+  #qrPreview { margin-top: 14px; }
+  #qrPreview svg { width: 140px; height: 140px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="lang-toggle" id="langToggle">English</span>
+  <h2 id="title">مولّد رمز الاستجابة السريعة (ZATCA)</h2>
+  <button id="startBtn">إنشاء رمز QR</button>
+  <button id="reloadBtn" class="secondary" style="display:none">تحديث الصفحة</button>
+  <div id="qrPreview"></div>
+  <div id="status"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- i18n ----------
+  var lang = "ar";
+  var strings = {
+    ar: {
+      title: "مولّد رمز الاستجابة السريعة (ZATCA)",
+      start: "إنشاء رمز QR",
+      reload: "تحديث الصفحة",
+      toggle: "English",
+      checkingContext: "جارٍ التحقق من الصفحة...",
+      notInvoice: "يجب فتح هذه الأداة من داخل صفحة فاتورة مبيعات.",
+      checkingField: "جارٍ التحقق من إعداد الحقل المخصص...",
+      creatingField: "جارٍ إنشاء الحقل المخصص لرمز QR...",
+      noPermission: "لا تملك الصلاحية الكافية لإنشاء الحقل المخصص. يرجى مراجعة المسؤول.",
+      fieldError: "تعذر إعداد الحقل المخصص لرمز QR.",
+      fetchingInvoice: "جارٍ جلب بيانات الفاتورة...",
+      alreadyExists: "تم إرفاق رمز QR بهذه الفاتورة مسبقًا. إذا رغبت في إعادة توليده، احذفه أولًا من الفاتورة.",
+      missingVat: "الرقم الضريبي للمنشأة غير موجود. يرجى إضافته في بيانات المنشأة أولًا.",
+      generating: "جارٍ توليد رمز QR...",
+      uploading: "جارٍ رفع الصورة...",
+      attaching: "جارٍ إرفاق الرمز بالفاتورة...",
+      success: "تم إنشاء رمز QR وإرفاقه بالفاتورة بنجاح.",
+      generalError: "حدث خطأ: "
+    },
+    en: {
+      title: "ZATCA QR Code Generator",
+      start: "Generate QR Code",
+      reload: "Reload Page",
+      toggle: "العربية",
+      checkingContext: "Checking page context...",
+      notInvoice: "Please open this from within a sales invoice page.",
+      checkingField: "Checking QR field setup...",
+      creatingField: "Creating custom field for QR code...",
+      noPermission: "You don't have permission to create the custom field. Contact your administrator.",
+      fieldError: "Could not set up the QR code custom field.",
+      fetchingInvoice: "Fetching invoice data...",
+      alreadyExists: "A QR code is already attached to this invoice. Remove it from the invoice first if you want to regenerate it.",
+      missingVat: "Business VAT number is missing. Please add it to business custom fields first.",
+      generating: "Generating QR code...",
+      uploading: "Uploading image...",
+      attaching: "Attaching QR code to invoice...",
+      success: "QR code generated and attached successfully.",
+      generalError: "Error: "
+    }
+  };
+
+  var titleEl = document.getElementById("title");
+  var startBtn = document.getElementById("startBtn");
+  var reloadBtn = document.getElementById("reloadBtn");
+  var langToggle = document.getElementById("langToggle");
+  var statusEl = document.getElementById("status");
+  var qrPreview = document.getElementById("qrPreview");
+
+  function t(key) { return strings[lang][key]; }
+
+  function applyLang() {
+    document.documentElement.lang = lang;
+    document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
+    titleEl.textContent = t("title");
+    startBtn.textContent = t("start");
+    reloadBtn.textContent = t("reload");
+    langToggle.textContent = t("toggle");
+    sendResize();
+  }
+
+  langToggle.addEventListener("click", function () {
+    lang = lang === "ar" ? "en" : "ar";
+    applyLang();
+  });
+
+  function setStatus(msg, kind) {
+    statusEl.textContent = msg;
+    statusEl.className = kind || "";
+    sendResize();
+  }
+
+  // ---------- resize ----------
+  function sendResize() {
+    window.parent.postMessage({ type: "resize", height: document.documentElement.scrollHeight }, "*");
+  }
+  window.addEventListener("load", sendResize);
+  new MutationObserver(sendResize).observe(document.body, { childList: true, subtree: true, attributes: true });
+
+  // ---------- Manager API bridge ----------
+  function api(method, path, body) {
+    var requestId = crypto.randomUUID();
+    return new Promise(function (resolve) {
+      function handler(event) {
+        if (event.source !== window.parent) return;
+        if (!event.data || event.data.requestId !== requestId) return;
+        window.removeEventListener("message", handler);
+        resolve(event.data);
+      }
+      window.addEventListener("message", handler);
+      window.parent.postMessage({ type: "api-request", requestId: requestId, path: path, method: method, body: body }, "*");
+    });
+  }
+
+  function pageRequest() {
+    return new Promise(function (resolve) {
+      function handler(event) {
+        if (event.source !== window.parent) return;
+        if (!event.data || event.data.type !== "page-response") return;
+        window.removeEventListener("message", handler);
+        resolve(event.data);
+      }
+      window.addEventListener("message", handler);
+      window.parent.postMessage({ type: "page-request" }, "*");
+    });
+  }
+
+  // ---------- ZATCA TLV + QR ----------
+  function encodeTLV(tag, value) {
+    var utf8 = new TextEncoder().encode(String(value));
+    return Uint8Array.from([tag, utf8.length].concat(Array.from(utf8)));
+  }
+
+  function generateZatcaQrSvg(data) {
+    var tlv = [
+      encodeTLV(1, data.sellerName),
+      encodeTLV(2, data.vatNumber),
+      encodeTLV(3, data.timestamp),
+      encodeTLV(4, data.invoiceTotal),
+      encodeTLV(5, data.vatTotal)
+    ].reduce(function (acc, val) {
+      var combined = new Uint8Array(acc.length + val.length);
+      combined.set(acc);
+      combined.set(val, acc.length);
+      return combined;
+    }, new Uint8Array());
+
+    var binary = "";
+    for (var i = 0; i < tlv.length; i++) binary += String.fromCharCode(tlv[i]);
+    var base64TLV = btoa(binary);
+
+    var qr = qrcode(0, "L");
+    qr.addData(base64TLV);
+    qr.make();
+    return qr.createSvgTag({ scalable: true });
+  }
+
+  // ---------- constants (must match extension registration) ----------
+  var QR_FIELD_KEY = "d2e9265a-460e-4a06-83f9-29a523a4d516";
+
+  function fail(msg) {
+    setStatus(t("generalError") + msg, "error");
+    startBtn.disabled = false;
+  }
+
+  startBtn.addEventListener("click", function () {
+    startBtn.disabled = true;
+    run().catch(function (err) {
+      console.log("ZATCA extension error:", err);
+      fail(err && err.message ? err.message : String(err));
+    });
+  });
+
+  async function run() {
+    // Step 1 & 2: confirm iframe context + get invoice key
+    setStatus(t("checkingContext"));
+    if (window.parent === window) { fail(t("notInvoice")); return; }
+
+    var page = await pageRequest();
+    if (!page || !page.body || page.body.handler !== "SalesInvoiceView") {
+      fail(t("notInvoice"));
+      return;
+    }
+    var invoiceKey = page.body.query && page.body.query.key;
+    if (!invoiceKey) { fail(t("notInvoice")); return; }
+
+    // Step 3: ensure custom field exists
+    setStatus(t("checkingField"));
+    var fieldCheck = await api("GET", "/api3/image-custom-field-form/" + QR_FIELD_KEY);
+    if (!(fieldCheck.status >= 200 && fieldCheck.status < 300)) {
+      if (fieldCheck.status === 404) {
+        setStatus(t("creatingField"));
+        var created = await api("PUT", "/api3/image-custom-field-form/" + QR_FIELD_KEY, {
+          name: "QR Code",
+          height: 100,
+          width: 100,
+          placement: [
+            "ad12b60b-23bf-4421-94df-8be79cef533e",
+            "245e5943-0092-409d-96ae-e2ee10eac75b"
+          ],
+          displayOnView: true
+        });
+        if (created.status === 401) { fail(t("noPermission")); return; }
+        if (!(created.status >= 200 && created.status < 300)) { fail(t("fieldError")); return; }
+      } else {
+        fail(t("fieldError"));
+        return;
+      }
+    }
+
+    // Step 4: fetch invoice data
+    setStatus(t("fetchingInvoice"));
+    var invoiceResp = await api("GET", "/api3/sales-invoice-view/" + invoiceKey);
+    var body = invoiceResp && invoiceResp.body;
+    if (!body) { fail(t("fetchingInvoice")); return; }
+
+    var existing = (body.custom_fields || []).find(function (f) { return f.key === QR_FIELD_KEY; });
+    if (existing && existing.text) { setStatus(t("alreadyExists"), "error"); startBtn.disabled = false; return; }
+
+    var sellerName = body.business && body.business.name;
+    var vatField = body.business && (body.business.custom_fields || []).find(function (f) {
+      return /vat|ضريب/i.test(f.label || "");
+    });
+    var vatNumber = vatField ? vatField.text : "";
+    if (!vatNumber) { fail(t("missingVat")); return; }
+
+    var timestamp = new Date().toISOString();
+    var invoiceTotalField = (body.table.totals || []).find(function (f) { return f.key === "Total"; });
+    var invoiceTotal = invoiceTotalField ? invoiceTotalField.number : 0;
+    var vatTotal = (body.table.totals || [])
+      .filter(function (tt) { return tt.class === "taxAmount"; })
+      .reduce(function (sum, tt) { return sum + tt.number; }, 0);
+
+    // Step 5: generate QR
+    setStatus(t("generating"));
+    var qrSvg = generateZatcaQrSvg({
+      sellerName: sellerName,
+      vatNumber: vatNumber,
+      timestamp: timestamp,
+      invoiceTotal: invoiceTotal.toFixed(2),
+      vatTotal: vatTotal.toFixed(2)
+    });
+    qrPreview.innerHTML = qrSvg;
+    sendResize();
+
+    var qrCodeBase64 = btoa(qrSvg);
+
+    // Step 6: upload blob
+    setStatus(t("uploading"));
+    var blobResp = await api("POST", "/api3/blobs", {
+      name: "QR Code Image",
+      contentType: "image/svg+xml",
+      content: qrCodeBase64
+    });
+    var blobGuid = blobResp && blobResp.body;
+    if (!blobGuid) { fail("blob upload failed"); return; }
+
+    // Step 7: attach to invoice
+    setStatus(t("attaching"));
+    var imagesMap = {};
+    imagesMap[QR_FIELD_KEY] = blobGuid;
+    var patchResp = await api("PATCH", "/api3/sales-invoice-form/" + invoiceKey, {
+      customFields2: { images: imagesMap }
+    });
+
+    if (!(patchResp.status >= 200 && patchResp.status < 300)) { fail("attach failed"); return; }
+
+    // Step 8: success + reload option
+    setStatus(t("success"), "success");
+    reloadBtn.style.display = "inline-block";
+    sendResize();
+  }
+
+  reloadBtn.addEventListener("click", function () {
+    window.parent.postMessage({ type: "reload" }, "*");
+  });
+
+  applyLang();
+  sendResize();
+})();
+</script>
+</body>
+</html>
